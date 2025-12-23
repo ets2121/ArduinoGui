@@ -1,0 +1,93 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arduino Web IDE</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p id="loading-text">Loading...</p>
+    </div>
+
+    <main id="app-container">
+        <!-- Page: Editor -->
+        <div id="page-editor" class="page active">
+            <div id="editor-layout">
+                <div id="editor-container">
+                    <textarea id="code-editor"></textarea>
+                </div>
+                <div id="console-container">
+                    <div id="console-header">Console</div>
+                    <pre id="console-output"></pre>
+                </div>
+            </div>
+            <div id="editor-controls">
+                <select id="board-selector"><option value="">Select Board</option></select>
+                <button id="compile-button">Compile</button>
+                <button id="upload-button">Upload</button>
+            </div>
+        </div>
+
+        <!-- Page: Boards -->
+        <div id="page-boards" class="page">
+            <h2>Board Manager</h2>
+            <div class="card">
+                <h4>Additional Board Manager URLs</h4>
+                <div class="input-group">
+                    <input type="text" id="board-url-input" placeholder="https://...json" value="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json">
+                    <button id="add-board-url-button">Add URL & Update</button>
+                </div>
+            </div>
+            <div class="card">
+                <h4>Installed Platforms</h4>
+                <div id="installed-cores-list" class="card-container"></div>
+            </div>
+            <div class="card">
+                <h4>Available Boards</h4>
+                <div id="board-list-container" class="card-container"></div>
+            </div>
+        </div>
+
+        <!-- Page: Libraries -->
+        <div id="page-libraries" class="page">
+            <h2>Library Manager</h2>
+            <div class="card">
+                <h4>Search for Libraries</h4>
+                <div class="input-group">
+                    <input type="search" id="library-search-input" placeholder="e.g., Adafruit NeoPixel">
+                    <button id="library-search-button">Search</button>
+                </div>
+                <div id="library-search-results" class="card-container"></div>
+            </div>
+            <div class="card">
+                <h4>Installed Libraries</h4>
+                <div id="installed-libraries-list" class="card-container"></div>
+            </div>
+        </div>
+
+        <!-- Page: Examples -->
+        <div id="page-examples" class="page">
+            <h2>Examples</h2>
+            <div id="example-list-container" class="card-container"></div>
+        </div>
+    </main>
+    
+    <nav id="bottom-nav">
+        <button class="nav-button active" data-page="editor">Editor</button>
+        <button class="nav-button" data-page="boards">Boards</button>
+        <button class="nav-button" data-page="libraries">Libraries</button>
+        <button class="nav-button" data-page="examples">Examples</button>
+    </nav>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

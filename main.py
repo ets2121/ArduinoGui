@@ -1,144 +1,102 @@
-
-import subprocess
 import os
-import json
 from flask import Flask, render_template, request, jsonify
+from arduino_cli import ArduinoCLI
 
 app = Flask(__name__)
+# Instantiate the enhanced wrapper
+cli = ArduinoCLI()
 
-# --- Corrected Paths ---
-# Use workspace-relative paths to ensure they are always correct.
-CWD = os.getcwd()
-ARDUINO_CLI_PATH = os.path.join(CWD, ".arduino-data/bin/arduino-cli")
-ARDUINO_DATA_PATH = os.path.join(CWD, ".arduino-data")
-ARDUINO_CONFIG_PATH = os.path.join(ARDUINO_DATA_PATH, "arduino-cli.yaml")
-SKETCH_PATH = "/tmp/temp_sketch/temp_sketch.ino"
-SUCCESS_FLAG_PATH = os.path.join(ARDUINO_DATA_PATH, "setup.success")
+# Use a temporary directory for the sketch. This will be created on the
+# local machine where the server is running.
+SKETCH_PATH = os.path.join("/tmp", "arduino_ide_sketch", "sketch.ino")
 
-@app.before_request
-def check_initialization():
-    """Checks if the workspace setup is complete before handling API requests."""
-    if request.path == '/' or request.path.startswith('/static'):
-        return
-
-    if request.path.startswith('/api/'):
-        if not os.path.exists(SUCCESS_FLAG_PATH):
-            return jsonify({
-                "error": "initializing",
-                "message": "The environment is still being configured. Please wait a moment and try again."
-            }), 503
-
-def run_arduino_command(command, parse_json=False):
-    """Runs a given arduino-cli command using explicit, correct paths."""
-    try:
-        env = os.environ.copy()
-        # The .venv is activated by devserver.sh, so we don't need to modify the PATH here.
-        
-        base_cmd = f'{ARDUINO_CLI_PATH} --config-file {ARDUINO_CONFIG_PATH} --data-dir {ARDUINO_DATA_PATH}'
-        full_command = f'{base_cmd} {command} --format json'
-
-        result = subprocess.run(
-            full_command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            check=True,
-            env=env
-        )
-
-        if parse_json:
-            # Handle empty output for list commands
-            if not result.stdout.strip():
-                if 'list' in command or 'search' in command:
-                    return []
-                return {}
-            return json.loads(result.stdout)
-        return {"success": True, "output": result.stdout + result.stderr}
-
-    except subprocess.CalledProcessError as e:
-        error_message = e.stderr or e.stdout
-        if parse_json:
-            try:
-                return json.loads(error_message)
-            except json.JSONDecodeError:
-                return {"error": error_message}
-        return {"success": False, "error": error_message}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+# --- Main Application Route --- #
 
 @app.route("/")
 def index():
+    """Serves the main HTML page of the UI."""
     return render_template("index.html")
 
-# --- API Endpoints (Unchanged) ---
+# --- API Endpoints that wrap the ArduinoCLI class --- #
 
 @app.route("/api/boards")
 def get_boards():
-    return jsonify(run_arduino_command("board listall", parse_json=True))
+    """Lists all installable boards and returns them as JSON."""
+    # The wrapper now directly returns a dictionary/list from the JSON output
+    return jsonify(cli.board_list_all())
 
 @app.route("/api/cores/installed")
 def get_installed_cores():
-    return jsonify(run_arduino_command("core list", parse_json=True))
-
-@app.route("/api/config/add-url", methods=['POST'])
-def add_board_url():
-    url = request.json.get("url")
-    if not url:
-        return jsonify({"error": "URL is required"}), 400
-    
-    current_config = run_arduino_command("config dump", parse_json=True)
-    urls = (current_config.get('board-manager', {}).get('additional_urls', [])) or []
-    if url not in urls:
-        urls.append(url)
-
-    urls_str = ' '.join(f'--additional-urls \"{u}\"' for u in urls)
-    run_arduino_command(f"config set {urls_str}")
-    
-    return jsonify(run_arduino_command("core update-index"))
+    """Lists all installed cores and returns them as JSON."""
+    return jsonify(cli.core_list())
 
 @app.route("/api/libraries/search")
 def search_libraries():
+    """Searches for a library by name and returns the results as JSON."""
     query = request.args.get("query")
     if not query:
-        return jsonify({"error": "A search query is required."}), 400
-    return jsonify(run_arduino_command(f"lib search \"{query}\"", parse_json=True))
+        return jsonify({"error": True, "message": "A search query is required."}), 400
+    return jsonify(cli.lib_search(query))
 
 @app.route("/api/libraries/install", methods=['POST'])
 def install_library():
+    """Installs a library by name and returns the command output."""
     library_name = request.json.get("name")
     if not library_name:
-        return jsonify({"error": "Library name is required"}), 400
-    return jsonify(run_arduino_command(f'lib install \"{library_name}\"'))
+        return jsonify({"error": True, "message": "Library name is required"}), 400
+    # This command returns raw text output, wrapped in a JSON object by the wrapper
+    return jsonify(cli.lib_install(library_name))
 
 @app.route("/api/libraries/installed")
 def get_installed_libraries():
-    return jsonify(run_arduino_command("lib list", parse_json=True))
-
-@app.route("/api/examples")
-def get_examples():
-    return jsonify(run_arduino_command("lib examples", parse_json=True))
+    """Lists all installed libraries and returns them as JSON."""
+    return jsonify(cli.list_libs())
 
 @app.route("/api/sketch", methods=['POST'])
 def save_sketch():
+    """Saves the editor code to a temporary local file."""
     code = request.json.get("code")
+    # Ensure the temporary directory exists on the local machine
     os.makedirs(os.path.dirname(SKETCH_PATH), exist_ok=True)
-    with open(SKETCH_PATH, 'w') as f:
+    with open(SKETCH_PATH, 'w', encoding='utf-8') as f:
         f.write(code)
-    return jsonify({"success": True, "message": "Sketch saved"})
+    return jsonify({"success": True, "message": "Sketch saved locally for compilation."})
 
 @app.route("/api/compile", methods=['POST'])
 def compile_sketch():
+    """Compiles the currently saved sketch for a given board."""
     fqbn = request.json.get("fqbn")
     if not fqbn:
-        return jsonify({"error": "A board (FQBN) is required for compilation."}), 400
-    return jsonify(run_arduino_command(f"compile --fqbn {fqbn} {os.path.dirname(SKETCH_PATH)}"))
+        return jsonify({"error": True, "message": "A board (FQBN) is required."}), 400
+    
+    sketch_dir = os.path.dirname(SKETCH_PATH)
+    # This command returns raw text output, wrapped in a JSON object
+    return jsonify(cli.compile(fqbn, sketch_dir))
 
 @app.route("/api/upload", methods=['POST'])
 def upload_sketch():
+    """Uploads the compiled sketch to a connected board via a specified port."""
     fqbn = request.json.get("fqbn")
-    if not fqbn:
-        return jsonify({"error": "A board (FQBN) is required for upload."}), 400
-    return jsonify(run_arduino_command(f"upload -p /dev/ttyACM0 --fqbn {fqbn} {os.path.dirname(SKETCH_PATH)}"))
+    port = request.json.get("port")
+    if not fqbn or not port:
+        return jsonify({"error": True, "message": "Board (FQBN) and port are required for upload."}), 400
+    
+    sketch_dir = os.path.dirname(SKETCH_PATH)
+    # This command returns raw text output, wrapped in a JSON object
+    return jsonify(cli.upload(fqbn, sketch_dir, port))
+
+# --- Placeholder Endpoints --- #
+
+@app.route("/api/config/add-url", methods=['POST'])
+def add_board_url():
+    return jsonify({"message": "This functionality should be managed via your local arduino-cli config."}), 501
+
+@app.route("/api/examples")
+def get_examples():
+     return jsonify({"message": "Example loading is not implemented in this version."}), 501
 
 if __name__ == "__main__":
+    # This will run the Flask server on your local machine
+    print("Starting Arduino UI Wrapper Server...")
+    print("Open http://127.0.0.1:8080 in your browser.")
     app.run(host='0.0.0.0', port=8080, debug=True)

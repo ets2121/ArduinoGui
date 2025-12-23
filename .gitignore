@@ -1,8 +1,0 @@
-# IDE-specific files
-.idx/
-
-# Python virtual environment
-.venv/
-
-# Arduino data directory
-.arduino-data/

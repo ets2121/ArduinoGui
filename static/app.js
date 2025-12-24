@@ -116,12 +116,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderFileList() {
         fileList.innerHTML = '';
         Object.keys(state.openFiles).forEach(filePath => {
-            const fileName = filePath.split('/').pop();
+            const fileName = filePath.split(/[\\/]/).pop(); // Works for both Windows and Unix paths
             const fileItem = document.createElement('div');
             fileItem.className = 'file-item';
             fileItem.textContent = fileName;
             fileItem.dataset.filePath = filePath;
-            fileItem.addEventListener('click', () => openFile(filePath));
+            fileItem.addEventListener('click', () => setActiveFile(filePath));
             fileList.appendChild(fileItem);
         });
     }
@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderFileTabs() {
         fileTabs.innerHTML = '';
         Object.keys(state.openFiles).forEach(filePath => {
-            const fileName = filePath.split('/').pop();
+            const fileName = filePath.split(/[\\/]/).pop();
             const tab = document.createElement('div');
             tab.className = 'tab';
             tab.textContent = fileName;
@@ -144,10 +144,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setActiveFile(filePath) {
         if (!state.openFiles.hasOwnProperty(filePath)) return;
+        if (state.activeFile === filePath) return; // No change
         state.activeFile = filePath;
         codeEditor.setValue(state.openFiles[filePath]);
         renderFileTabs();
-        logOutput(`Opened ${filePath.split('/').pop()}`, 'Editor');
+        logOutput(`Opened ${filePath.split(/[\\/]/).pop()}`, 'Editor');
     }
 
     // ======================================================================
@@ -166,14 +167,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Use a for...of loop to ensure files are opened sequentially
         for (const fileName of data.files) {
-            const filePath = `${sketch.path}/${fileName}`;
+            // The path from the backend is OS-specific, so we build a consistent one.
+            const filePath = `${sketch.path}/${fileName}`.replace(/\\/g, '/');
             await openFile(filePath, false); // Open but don't make active yet
         }
 
-        // Set the first file as active
         if (data.files.length > 0) {
-            const firstFilePath = `${sketch.path}/${data.files[0]}`;
+            const firstFileName = data.files[0];
+            const firstFilePath = `${sketch.path}/${firstFileName}`.replace(/\\/g, '/');
             setActiveFile(firstFilePath);
         }
 
@@ -201,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
             logOutput('No active file to save.', 'Editor');
             return;
         }
-        logOutput(`Saving ${state.activeFile.split('/').pop()}...`, 'Editor');
+        logOutput(`Saving ${state.activeFile.split(/[\\/]/).pop()}...`, 'Editor');
         const content = codeEditor.getValue();
         const result = await api.put('/api/sketch/file/content', {
             path: state.activeFile,
@@ -209,7 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         logOutput(result);
         if (!result.error) {
-            state.openFiles[state.activeFile] = content; // Update local cache
+            state.openFiles[state.activeFile] = content;
         }
     }
     
@@ -223,13 +226,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const result = await api.post('/api/sketches/new', { name: sketchName });
         logOutput(result);
         if (result.success && result.output) {
-            // The output of `sketch new` is the path to the sketch folder.
-            // We need to parse it to get the name and path.
-            const path = result.output.trim();
-            const name = path.split(/[\\/]/).pop();
+            const path = result.output.trim().replace(/\\/g, '/');
+            const name = path.split('/').pop();
             await loadSketch({ name, path });
         }
-        // Refresh the list in the modal
         populateExistingSketches(); 
     }
 
@@ -239,14 +239,13 @@ document.addEventListener('DOMContentLoaded', () => {
             logOutput("Please enter a file name.");
             return;
         }
-        const filePath = `${state.currentSketch.path}/${fileName}`;
+        const filePath = `${state.currentSketch.path}/${fileName}`.replace(/\\/g, '/');
         logOutput(`Creating file: ${fileName}...`);
         const result = await api.post('/api/sketch/file', { path: filePath });
         logOutput(result);
         if (!result.error) {
-            await openFile(filePath, true); // Open the new file
+            await openFile(filePath, true);
             renderFileList();
-            renderFileTabs();
         }
     }
     
@@ -255,52 +254,52 @@ document.addEventListener('DOMContentLoaded', () => {
             logOutput('No active file selected.');
             return;
         }
-        if (!confirm(`Are you sure you want to delete ${state.activeFile.split('/').pop()}?`)) {
-            return;
-        }
-        logOutput(`Deleting file: ${state.activeFile}...`);
+        const fileName = state.activeFile.split(/[\\/]/).pop();
+        if (!confirm(`Are you sure you want to delete ${fileName}?`)) return;
+
+        logOutput(`Deleting file: ${fileName}...`);
         const result = await api.delete('/api/sketch/file', { path: state.activeFile });
         logOutput(result);
 
         if (!result.error) {
-            delete state.openFiles[state.activeFile];
+            const deletedPath = state.activeFile;
+            delete state.openFiles[deletedPath];
             state.activeFile = null;
-            // Switch to another file if one exists
+            codeEditor.setValue(''); // Clear editor
+
             const remainingFiles = Object.keys(state.openFiles);
             if (remainingFiles.length > 0) {
                 setActiveFile(remainingFiles[0]);
+            } else {
+                // If no files left, just clear the tabs and list
+                renderFileTabs();
+                renderFileList();
             }
-            renderFileList();
-            renderFileTabs();
         }
     }
 
     async function renameCurrentFile() {
-        if (!state.activeFile) {
-            logOutput('No active file selected.');
-            return;
-        }
+        if (!state.activeFile) { logOutput('No active file selected.'); return; }
+        
         const oldPath = state.activeFile;
-        const oldName = oldPath.split('/').pop();
+        const oldName = oldPath.split(/[\\/]/).pop();
         const newName = prompt("Enter new name for the file:", oldName);
 
-        if (!newName || newName === oldName) {
-            logOutput("Rename cancelled.");
-            return;
-        }
+        if (!newName || newName === oldName) { logOutput("Rename cancelled."); return; }
 
         logOutput(`Renaming ${oldName} to ${newName}...`);
         const result = await api.post('/api/sketch/file/rename', { old_path: oldPath, new_name: newName });
         logOutput(result);
 
         if (!result.error) {
-            const newPath = `${state.currentSketch.path}/${newName}`;
+            const newPath = `${state.currentSketch.path}/${newName}`.replace(/\\/g, '/');
             // Update state
             state.openFiles[newPath] = state.openFiles[oldPath];
             delete state.openFiles[oldPath];
             state.activeFile = newPath;
             renderFileList();
             renderFileTabs();
+            setActiveFile(newPath); // Re-activate to update editor view
         }
     }
 
@@ -308,12 +307,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- INITIALIZATION & MODAL ---
     // ======================================================================
 
+    async function initializeApp() {
+        logOutput("Initializing application...");
+        const dirData = await api.get('/api/directories/sketchbook');
+        if (dirData.path) {
+            state.sketchbookPath = dirData.path;
+            logOutput(`Using sketchbook: ${state.sketchbookPath}`, 'Config');
+        } else {
+            logOutput(dirData);
+        }
+
+        await Promise.all([
+            populateExistingSketches(),
+            populateBoards(),
+            getInstalledLibraries(),
+            getInstalledCores()
+        ]);
+        logOutput("Ready. Please select or create a sketch.");
+    }
+
     async function populateExistingSketches() {
         const data = await api.get('/api/sketches');
         existingSketchList.innerHTML = '';
-        if (data.sketchbooks && data.sketchbooks[0].sketches) {
+        if (data.sketchbooks && data.sketchbooks[0] && data.sketchbooks[0].sketches) {
             data.sketchbooks[0].sketches.forEach(sketch => {
-                const card = createCard(sketch.name, `Path: ${sketch.path}`, () => loadSketch(sketch));
+                // Normalize path separators for consistency
+                const normalizedPath = sketch.path.replace(/\\/g, '/');
+                const card = createCard(sketch.name, `Path: ${normalizedPath}`, () => loadSketch({ ...sketch, path: normalizedPath }));
                 existingSketchList.appendChild(card);
             });
         }
@@ -323,43 +343,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- OTHER API-DEPENDENT FUNCTIONS ---
     // ======================================================================
     
-    // --- Compile & Upload (Updated) ---
     async function compileSketch() {
-        if (!state.currentSketch) { logOutput('No sketch loaded.'); return; }
-        if (!state.selectedFqbn) { logOutput('Please select a board.'); return; }
-        await saveCurrentFile(); // Save before compiling
+        if (!state.currentSketch || !state.selectedFqbn) { logOutput('Missing sketch or board selection.'); return; }
+        await saveCurrentFile(); 
         logOutput(`Compiling sketch: ${state.currentSketch.name}...`);
-        const result = await api.post('/api/compile', {
-            fqbn: state.selectedFqbn,
-            sketch_path: state.currentSketch.path
-        });
+        const result = await api.post('/api/compile', { fqbn: state.selectedFqbn, sketch_path: state.currentSketch.path });
         logOutput(result);
     }
 
     async function uploadSketch() {
-        if (!state.currentSketch) { logOutput('No sketch loaded.'); return; }
-        if (!state.selectedFqbn) { logOutput('Please select a board.'); return; }
+        if (!state.currentSketch || !state.selectedFqbn) { logOutput('Missing sketch or board selection.'); return; }
         const port = prompt("Enter serial port (e.g., COM3):", "");
         if (!port) { logOutput("Upload cancelled."); return; }
-        await saveCurrentFile(); // Save before uploading
+        await saveCurrentFile();
         logOutput(`Uploading sketch: ${state.currentSketch.name}...`);
-        const result = await api.post('/api/upload', {
-            fqbn: state.selectedFqbn,
-            port: port,
-            sketch_path: state.currentSketch.path
-        });
+        const result = await api.post('/api/upload', { fqbn: state.selectedFqbn, port: port, sketch_path: state.currentSketch.path });
         logOutput(result);
     }
 
-    // --- Boards & Libraries (Existing) ---
     async function populateBoards() {
         const data = await api.get('/api/boards');
         boardSelector.innerHTML = '<option value="">Select Board</option>';
         if (data && data.boards) {
-            data.boards.forEach(board => {
-                const option = new Option(board.name, board.fqbn);
-                boardSelector.add(option);
-            });
+            data.boards.forEach(b => boardSelector.add(new Option(b.name, b.fqbn)));
         }
     }
 
@@ -368,22 +374,19 @@ document.addEventListener('DOMContentLoaded', () => {
         installedCoresList.innerHTML = '';
         if (data && data.platforms) {
             data.platforms.forEach(p => {
-                const content = `ID: ${p.id}\nVersion: ${p.installed_version}`;
-                installedCoresList.appendChild(createCard(p.maintainer, content));
+                installedCoresList.appendChild(createCard(p.maintainer, `ID: ${p.id}\nVersion: ${p.installed_version}`));
             });
         }
     }
 
     async function searchLibraries() {
-        const query = librarySearchInput.value;
-        if (!query) return;
+        const query = librarySearchInput.value; if (!query) return;
         logOutput(`Searching for "${query}"...`, 'Library');
         const data = await api.get(`/api/libraries/search?query=${query}`);
         librarySearchResults.innerHTML = '';
         if (data.libraries) {
             data.libraries.forEach(lib => {
-                const card = createCard(lib.library.name, lib.library.sentence, () => installLibrary(lib.library.name));
-                librarySearchResults.appendChild(card);
+                librarySearchResults.appendChild(createCard(lib.library.name, lib.library.sentence, () => installLibrary(lib.library.name)));
             });
         }
     }
@@ -401,8 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.installed_libraries) {
             data.installed_libraries.forEach(lib => {
                 const l = lib.library;
-                const content = `Author: ${l.author}\nVersion: ${l.version}\n\n${l.paragraph}`;
-                installedLibrariesList.appendChild(createCard(l.name, content));
+                installedLibrariesList.appendChild(createCard(l.name, `Author: ${l.author}\nVersion: ${l.version}\n\n${l.paragraph}`));
             });
         }
     }
@@ -431,12 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ======================================================================
-    // --- INITIAL LOAD ---
+    // --- INITIALIZE ---
     // ======================================================================
-    logOutput("Initializing application...");
-    populateExistingSketches();
-    populateBoards();
-    getInstalledLibraries();
-    getInstalledCores();
-    logOutput("Ready. Please select or create a sketch.");
+    initializeApp();
 });

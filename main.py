@@ -9,8 +9,13 @@ cli = ArduinoCLI()
 # --- Helper function to get the user's sketchbook path --- #
 
 def get_sketchbook_path():
-    """Fetches the sketchbook path from the arduino-cli config."""
-    # arduino-cli config dump returns a JSON with the sketchbook path
+    """Fetches the sketchbook path directly from the arduino-cli config."""
+    # Execute the specific command to get only the user directories path
+    result = cli._execute(["config", "get", "directories.user"])
+    if result and result.get("success") and result.get("output"):
+        # The command's output is the path followed by a newline, so we strip it.
+        return result.get("output").strip()
+    # Fallback to the old method if the new one fails for any reason
     config = cli._execute(["config", "dump"], parse_json=True)
     if config and config.get('directories') and config.get('directories').get('user'):
         return config['directories']['user']
@@ -23,7 +28,6 @@ def is_safe_path(path):
     """Ensure the path is within the sketchbook to prevent directory traversal."""
     if not SKETCHBOOK_PATH:
         return False
-    # Resolve the absolute path and check if it's within the sketchbook directory
     abs_path = os.path.abspath(path)
     return abs_path.startswith(os.path.abspath(SKETCHBOOK_PATH))
 
@@ -37,16 +41,24 @@ def index():
 # --- NEW: Sketch and File Management APIs ---
 # ======================================================================
 
+@app.route("/api/directories/sketchbook", methods=['GET'])
+def get_sketchbook_directory():
+    """Returns the configured sketchbook path."""
+    if SKETCHBOOK_PATH:
+        return jsonify({"path": SKETCHBOOK_PATH})
+    else:
+        return jsonify({"error": True, "message": "Sketchbook path not configured in arduino-cli."}), 500
+
 # --- Sketch APIs ---
 
 @app.route("/api/sketches", methods=['GET'])
 def list_sketches():
-    """Lists all sketches found by arduino-cli."""
+    """Lists all sketches found by arduino-cli in the sketchbook path."""
     return jsonify(cli.sketch_list())
 
 @app.route("/api/sketches/new", methods=['POST'])
 def new_sketch():
-    """Creates a new sketch using arduino-cli."""
+    """Creates a new sketch using arduino-cli in the sketchbook path."""
     sketch_name = request.json.get("name")
     if not sketch_name:
         return jsonify({"error": True, "message": "Sketch name is required."}), 400
@@ -76,7 +88,7 @@ def manage_file():
 
     if request.method == 'POST': # Create
         try:
-            with open(file_path, 'w') as f: # Create an empty file
+            with open(file_path, 'w') as f:
                 f.write('// New file\n')
             return jsonify({"success": True, "message": f"File created: {os.path.basename(file_path)}"})
         except OSError as e:
@@ -121,7 +133,7 @@ def rename_file():
         return jsonify({"error": True, "message": "Invalid or unsafe source path."}), 403
 
     new_path = os.path.join(os.path.dirname(old_path), new_name)
-    if not is_safe_path(new_path): # Also check the destination
+    if not is_safe_path(new_path):
         return jsonify({"error": True, "message": "Invalid new file name."}), 403
 
     try:
@@ -130,7 +142,6 @@ def rename_file():
     except OSError as e:
         return jsonify({"error": True, "message": str(e)}), 500
 
-
 # ======================================================================
 # --- Core Functionality APIs (Updated) ---
 # ======================================================================
@@ -138,7 +149,7 @@ def rename_file():
 @app.route("/api/compile", methods=['POST'])
 def compile_sketch():
     fqbn = request.json.get("fqbn")
-    sketch_path = request.json.get("sketch_path") # Path to sketch dir
+    sketch_path = request.json.get("sketch_path")
     if not fqbn or not sketch_path:
         return jsonify({"error": True, "message": "Board (FQBN) and sketch path are required."}), 400
     if not is_safe_path(sketch_path):

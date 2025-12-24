@@ -1,12 +1,15 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- DOM Element References ---
+    const navLinks = document.querySelectorAll('.nav-link');
+    const pages = document.querySelectorAll('.page');
     const boardSelector = document.getElementById('board-selector');
     const compileBtn = document.getElementById('compile-btn');
     const uploadBtn = document.getElementById('upload-btn');
     const codeEditor = document.getElementById('code-editor');
     const outputArea = document.getElementById('output-area');
     const librarySearchInput = document.getElementById('library-search-input');
-    const librarySearchBtn = document.getElementById('library-search-btn');
+    // FIX: Corrected button ID to match the HTML
+    const librarySearchBtn = document.getElementById('library-search-button'); 
     const librarySearchResults = document.getElementById('library-search-results');
     const installedLibrariesList = document.getElementById('installed-libraries-list');
 
@@ -27,8 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const logOutput = (data) => {
         let message = 'An unknown error occurred.';
-
-        // Handle structured JSON from our API or raw text
         if (typeof data === 'object' && data !== null) {
             if (data.message) {
                 message = data.message;
@@ -36,18 +37,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 message = data.output;
             } else if (data.error && data.message) {
                 message = `Error: ${data.message}`;
-            }
-             else {
+            } else {
                 message = JSON.stringify(data, null, 2);
             }
         } else {
-            message = data; // Fallback for plain text
+            message = data; 
         }
-
         outputArea.textContent += message + '\n';
         outputArea.scrollTop = outputArea.scrollHeight;
     };
 
+    // FIX: Modified createCard to use a <pre> tag for content to preserve formatting
     const createCard = (title, content, onClick) => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
         card.appendChild(titleEl);
 
         if (content) {
-            const contentEl = document.createElement('p');
+            const contentEl = document.createElement('pre'); // Use <pre> for better formatting
             contentEl.textContent = content;
             card.appendChild(contentEl);
         }
@@ -95,7 +95,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!query) return;
         logOutput(`Searching for "${query}"...`);
         const data = await api.get(`libraries/search?query=${query}`);
-        logOutput(data);
         renderLibrarySearchResults(data.libraries);
     };
 
@@ -103,7 +102,6 @@ document.addEventListener('DOMContentLoaded', () => {
         logOutput(`Installing ${name}...`);
         const result = await api.post('libraries/install', { name });
         logOutput(result);
-        // Refresh the installed list after installing
         getInstalledLibraries(); 
     };
 
@@ -153,14 +151,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // FIX: Updated to display more library details as requested
     const renderInstalledLibraries = (data) => {
         installedLibrariesList.innerHTML = '';
-        // BUG FIX: The API returns { "installed_libraries": [...] }
-        // The old code was looking for a "libraries" property.
         if(data && data.installed_libraries){
           data.installed_libraries.forEach(lib => {
               const library = lib.library;
-              const content = `Version: ${library.version} | Author: ${library.author}`;
+              // Create a multi-line string for the card content
+              const content = [
+                  `Author: ${library.author}`,
+                  `Version: ${library.version}`,
+                  '\n',
+                  library.paragraph
+              ].join('\n');
               const card = createCard(library.name, content);
               installedLibrariesList.appendChild(card);
           });
@@ -169,7 +172,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- Event Listeners ---
+    // --- Event Listeners & Page Navigation ---
+
+    // FIX: Added tab navigation logic
+    navLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetPage = link.getAttribute('data-page');
+
+            pages.forEach(page => {
+                page.classList.toggle('active', page.id === targetPage);
+            });
+
+            navLinks.forEach(navLink => {
+                navLink.classList.toggle('active', navLink.getAttribute('data-page') === targetPage);
+            });
+        });
+    });
+
     boardSelector.addEventListener('change', () => {
         selectedFqbn = boardSelector.value;
     });
@@ -181,4 +201,8 @@ document.addEventListener('DOMContentLoaded', () => {
     logOutput("Application initialized. Waiting for board list...");
     populateBoards().then(() => logOutput("Board list loaded."));
     getInstalledLibraries();
+
+    // Set the initial active page
+    document.getElementById('page-editor').classList.add('active');
+    document.querySelector('.nav-link[data-page="page-editor"]').classList.add('active');
 });

@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- DOM Element References (Corrected to match index.html) ---
+    // --- DOM Element References ---
     const navButtons = document.querySelectorAll('.nav-button');
     const pages = document.querySelectorAll('.page');
     const boardSelector = document.getElementById('board-selector');
@@ -11,15 +11,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const librarySearchBtn = document.getElementById('library-search-button');
     const librarySearchResults = document.getElementById('library-search-results');
     const installedLibrariesList = document.getElementById('installed-libraries-list');
+    const installedCoresList = document.getElementById('installed-cores-list'); // Added reference
 
     // --- Initialize CodeMirror Editor ---
     const codeEditor = CodeMirror.fromTextArea(codeEditorElement, {
-        lineNumbers: true,
-        mode: 'text/x-c++src',
-        theme: 'monokai',
-        matchBrackets: true,
-        indentUnit: 2,
-        tabSize: 2
+        lineNumbers: true, mode: 'text/x-c++src', theme: 'monokai',
+        matchBrackets: true, indentUnit: 2, tabSize: 2
     });
     codeEditor.setValue("void setup() {\n  // put your setup code here, to run once:\n\n}\n\nvoid loop() {\n  // put your main code here, to run repeatedly:\n\n}");
 
@@ -30,8 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const api = {
         get: (endpoint) => fetch(`/api/${endpoint}`).then(res => res.json()),
         post: (endpoint, body) => fetch(`/api/${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         }).then(res => res.json()),
     };
@@ -41,18 +37,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const logOutput = (data) => {
         let message = 'An unknown error occurred.';
         if (typeof data === 'object' && data !== null) {
-            if (data.error && data.message) {
-                message = `Error: ${data.message}`;
-            } else if (data.output) {
-                message = data.output;
-            } else if (data.message) {
-                 message = data.message;
-            } else {
-                message = JSON.stringify(data, null, 2);
-            }
-        } else {
-            message = data;
-        }
+            if (data.error && data.message) message = `Error: ${data.message}`;
+            else if (data.output) message = data.output;
+            else if (data.message) message = data.message;
+            else message = JSON.stringify(data, null, 2);
+        } else { message = data; }
         outputArea.textContent += message + '\n';
         outputArea.scrollTop = outputArea.scrollHeight;
     };
@@ -89,9 +78,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 option.textContent = board.name;
                 boardSelector.appendChild(option);
             });
-        } else if (data.error) {
-            logOutput(data);
-        }
+        } else if (data.error) { logOutput(data); }
+    };
+
+    const getInstalledCores = async () => {
+        const data = await api.get('cores/installed');
+        renderInstalledCores(data);
     };
 
     const searchLibraries = async () => {
@@ -115,10 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const compileCode = async () => {
-        if (!selectedFqbn) {
-            logOutput('Error: Please select a board first.');
-            return;
-        }
+        if (!selectedFqbn) { logOutput('Error: Please select a board first.'); return; }
         logOutput('Saving sketch...');
         await api.post('sketch', { code: codeEditor.getValue() });
         logOutput(`Compiling for ${selectedFqbn}...`);
@@ -127,15 +116,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const uploadCode = async () => {
-        if (!selectedFqbn) {
-            logOutput('Error: Please select a board first.');
-            return;
-        }
+        if (!selectedFqbn) { logOutput('Error: Please select a board first.'); return; }
         const port = prompt("Enter the serial port for your board (e.g., COM3 or /dev/ttyACM0):");
-        if (!port) {
-            logOutput('Upload cancelled.');
-            return;
-        }
+        if (!port) { logOutput('Upload cancelled.'); return; }
         logOutput('Saving sketch...');
         await api.post('sketch', { code: codeEditor.getValue() });
         logOutput(`Uploading to ${selectedFqbn} on port ${port}...`);
@@ -144,6 +127,25 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- Rendering Functions ---
+
+    const renderInstalledCores = (data) => {
+        installedCoresList.innerHTML = '';
+        if (data && Array.isArray(data.platforms)) {
+            data.platforms.forEach(platform => {
+                const content = [
+                    `ID: ${platform.id}`,
+                    `Version: ${platform.installed_version}`,
+                    `Maintainer: ${platform.maintainer}`
+                ].join('\n');
+                // The API result from arduino-cli does not include a top-level "name" field for the platform itself
+                // We will use the maintainer as the title instead.
+                const card = createCard(platform.maintainer, content);
+                installedCoresList.appendChild(card);
+            });
+        } else if (data.error) {
+            logOutput(`Could not load installed cores: ${data.message}`);
+        }
+    };
 
     const renderLibrarySearchResults = (libs) => {
         librarySearchResults.innerHTML = '';
@@ -179,10 +181,8 @@ document.addEventListener('DOMContentLoaded', () => {
     navButtons.forEach(button => {
         button.addEventListener('click', () => {
             const targetPageId = 'page-' + button.getAttribute('data-page');
-            
             pages.forEach(page => page.classList.remove('active'));
             document.getElementById(targetPageId).classList.add('active');
-
             navButtons.forEach(btn => btn.classList.remove('active'));
             button.classList.add('active');
         });
@@ -197,7 +197,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('page-editor').classList.add('active');
     document.querySelector('.nav-button[data-page="editor"]').classList.add('active');
     
-    logOutput("Application initialized. Loading boards...");
+    logOutput("Application initialized. Loading data...");
     populateBoards().then(() => logOutput("Board list loaded."));
     getInstalledLibraries();
+    getInstalledCores(); // Fetch and render the installed cores
 });

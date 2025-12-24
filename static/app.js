@@ -1,17 +1,27 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- DOM Element References ---
-    const navLinks = document.querySelectorAll('.nav-link');
+    // --- DOM Element References (Corrected to match index.html) ---
+    const navButtons = document.querySelectorAll('.nav-button');
     const pages = document.querySelectorAll('.page');
     const boardSelector = document.getElementById('board-selector');
-    const compileBtn = document.getElementById('compile-btn');
-    const uploadBtn = document.getElementById('upload-btn');
-    const codeEditor = document.getElementById('code-editor');
-    const outputArea = document.getElementById('output-area');
+    const compileBtn = document.getElementById('compile-button');
+    const uploadBtn = document.getElementById('upload-button');
+    const codeEditorElement = document.getElementById('code-editor');
+    const outputArea = document.getElementById('console-output');
     const librarySearchInput = document.getElementById('library-search-input');
-    // FIX: Corrected button ID to match the HTML
-    const librarySearchBtn = document.getElementById('library-search-button'); 
+    const librarySearchBtn = document.getElementById('library-search-button');
     const librarySearchResults = document.getElementById('library-search-results');
     const installedLibrariesList = document.getElementById('installed-libraries-list');
+
+    // --- Initialize CodeMirror Editor ---
+    const codeEditor = CodeMirror.fromTextArea(codeEditorElement, {
+        lineNumbers: true,
+        mode: 'text/x-c++src',
+        theme: 'monokai',
+        matchBrackets: true,
+        indentUnit: 2,
+        tabSize: 2
+    });
+    codeEditor.setValue("void setup() {\n  // put your setup code here, to run once:\n\n}\n\nvoid loop() {\n  // put your main code here, to run repeatedly:\n\n}");
 
     // --- State Management ---
     let selectedFqbn = null;
@@ -31,62 +41,56 @@ document.addEventListener('DOMContentLoaded', () => {
     const logOutput = (data) => {
         let message = 'An unknown error occurred.';
         if (typeof data === 'object' && data !== null) {
-            if (data.message) {
-                message = data.message;
+            if (data.error && data.message) {
+                message = `Error: ${data.message}`;
             } else if (data.output) {
                 message = data.output;
-            } else if (data.error && data.message) {
-                message = `Error: ${data.message}`;
+            } else if (data.message) {
+                 message = data.message;
             } else {
                 message = JSON.stringify(data, null, 2);
             }
         } else {
-            message = data; 
+            message = data;
         }
         outputArea.textContent += message + '\n';
         outputArea.scrollTop = outputArea.scrollHeight;
     };
 
-    // FIX: Modified createCard to use a <pre> tag for content to preserve formatting
     const createCard = (title, content, onClick) => {
         const card = document.createElement('div');
         card.className = 'card';
-        
         const titleEl = document.createElement('h3');
         titleEl.textContent = title;
         card.appendChild(titleEl);
-
         if (content) {
-            const contentEl = document.createElement('pre'); // Use <pre> for better formatting
+            const contentEl = document.createElement('pre');
             contentEl.textContent = content;
             card.appendChild(contentEl);
         }
-
         if (onClick) {
             const btn = document.createElement('button');
             btn.textContent = 'Install';
-            btn.onclick = (e) => {
-                e.stopPropagation();
-                onClick();
-            };
+            btn.onclick = (e) => { e.stopPropagation(); onClick(); };
             card.appendChild(btn);
         }
-
         return card;
     };
 
-    // --- Core Logic Functions ---
+    // --- Core Logic & API Calls ---
 
     const populateBoards = async () => {
         const data = await api.get('boards');
         boardSelector.innerHTML = '<option value="">Select a Board</option>';
-        if (data && data.boards) {
+        if (data && Array.isArray(data.boards)) {
             data.boards.forEach(board => {
                 const option = document.createElement('option');
                 option.value = board.fqbn;
                 option.textContent = board.name;
                 boardSelector.appendChild(option);
             });
+        } else if (data.error) {
+            logOutput(data);
         }
     };
 
@@ -102,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
         logOutput(`Installing ${name}...`);
         const result = await api.post('libraries/install', { name });
         logOutput(result);
-        getInstalledLibraries(); 
+        getInstalledLibraries();
     };
 
     const getInstalledLibraries = async () => {
@@ -116,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         logOutput('Saving sketch...');
-        await api.post('sketch', { code: codeEditor.value });
+        await api.post('sketch', { code: codeEditor.getValue() });
         logOutput(`Compiling for ${selectedFqbn}...`);
         const result = await api.post('compile', { fqbn: selectedFqbn });
         logOutput(result);
@@ -133,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         logOutput('Saving sketch...');
-        await api.post('sketch', { code: codeEditor.value });
+        await api.post('sketch', { code: codeEditor.getValue() });
         logOutput(`Uploading to ${selectedFqbn} on port ${port}...`);
         const result = await api.post('upload', { fqbn: selectedFqbn, port });
         logOutput(result);
@@ -143,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderLibrarySearchResults = (libs) => {
         librarySearchResults.innerHTML = '';
-        if (libs) {
+        if (libs && Array.isArray(libs)) {
             libs.forEach(lib => {
                 const card = createCard(lib.library.name, lib.library.sentence, () => installLibrary(lib.library.name));
                 librarySearchResults.appendChild(card);
@@ -151,58 +155,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // FIX: Updated to display more library details as requested
     const renderInstalledLibraries = (data) => {
         installedLibrariesList.innerHTML = '';
-        if(data && data.installed_libraries){
-          data.installed_libraries.forEach(lib => {
-              const library = lib.library;
-              // Create a multi-line string for the card content
-              const content = [
-                  `Author: ${library.author}`,
-                  `Version: ${library.version}`,
-                  '\n',
-                  library.paragraph
-              ].join('\n');
-              const card = createCard(library.name, content);
-              installedLibrariesList.appendChild(card);
-          });
+        if (data && Array.isArray(data.installed_libraries)) {
+            data.installed_libraries.forEach(lib => {
+                const library = lib.library;
+                const content = [
+                    `Author: ${library.author}`,
+                    `Version: ${library.version}`,
+                    '\n',
+                    library.paragraph
+                ].join('\n');
+                const card = createCard(library.name, content);
+                installedLibrariesList.appendChild(card);
+            });
         } else if (data.error) {
             logOutput(`Could not load installed libraries: ${data.message}`);
         }
     };
 
-    // --- Event Listeners & Page Navigation ---
+    // --- Event Listeners ---
 
-    // FIX: Added tab navigation logic
-    navLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const targetPage = link.getAttribute('data-page');
+    navButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetPageId = 'page-' + button.getAttribute('data-page');
+            
+            pages.forEach(page => page.classList.remove('active'));
+            document.getElementById(targetPageId).classList.add('active');
 
-            pages.forEach(page => {
-                page.classList.toggle('active', page.id === targetPage);
-            });
-
-            navLinks.forEach(navLink => {
-                navLink.classList.toggle('active', navLink.getAttribute('data-page') === targetPage);
-            });
+            navButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
         });
     });
 
-    boardSelector.addEventListener('change', () => {
-        selectedFqbn = boardSelector.value;
-    });
-    compileBtn.addEventListener('click', compileCode);
-    uploadBtn.addEventListener('click', uploadCode);
-    librarySearchBtn.addEventListener('click', searchLibraries);
+    if (boardSelector) boardSelector.addEventListener('change', () => { selectedFqbn = boardSelector.value; });
+    if (compileBtn) compileBtn.addEventListener('click', compileCode);
+    if (uploadBtn) uploadBtn.addEventListener('click', uploadCode);
+    if (librarySearchBtn) librarySearchBtn.addEventListener('click', searchLibraries);
 
     // --- Initial Load ---
-    logOutput("Application initialized. Waiting for board list...");
+    document.getElementById('page-editor').classList.add('active');
+    document.querySelector('.nav-button[data-page="editor"]').classList.add('active');
+    
+    logOutput("Application initialized. Loading boards...");
     populateBoards().then(() => logOutput("Board list loaded."));
     getInstalledLibraries();
-
-    // Set the initial active page
-    document.getElementById('page-editor').classList.add('active');
-    document.querySelector('.nav-link[data-page="page-editor"]').classList.add('active');
 });

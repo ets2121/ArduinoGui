@@ -74,7 +74,7 @@ def manage_file():
     if not is_safe_path(file_path):
         return jsonify({"error": True, "message": "Invalid or unsafe file path."}), 403
 
-    if request.method == 'POST': // Create
+    if request.method == 'POST': # Create
         try:
             with open(file_path, 'w') as f: # Create an empty file
                 f.write('// New file\n')
@@ -82,7 +82,7 @@ def manage_file():
         except OSError as e:
             return jsonify({"error": True, "message": str(e)}), 500
 
-    elif request.method == 'DELETE': // Delete
+    elif request.method == 'DELETE': # Delete
         try:
             os.remove(file_path)
             return jsonify({"success": True, "message": f"File deleted: {os.path.basename(file_path)}"})
@@ -104,7 +104,7 @@ def file_content():
         except OSError as e:
             return jsonify({"error": True, "message": str(e)}), 500
 
-    elif request.method == 'PUT': // Save/Update
+    elif request.method == 'PUT': # Save/Update
         content = request.json.get('content', '')
         try:
             with open(file_path, 'w', encoding='utf-8') as f:

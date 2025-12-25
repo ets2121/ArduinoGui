@@ -1,8 +1,9 @@
 (() => {
     const App = window.App;
+    let sketchModalInstance;
 
     const dom = {
-        sketchModal: document.getElementById('sketch-modal'),
+        sketchModalEl: document.getElementById('sketch-modal'),
         existingSketchList: document.getElementById('existing-sketch-list'),
         newSketchNameInput: document.getElementById('new-sketch-name'),
         createSketchBtn: document.getElementById('create-sketch-button'),
@@ -20,8 +21,16 @@
         await App.Editor.loadAllFiles(sketch.path);
 
         dom.sketchNameDisplay.textContent = sketch.name;
-        dom.sketchModal.classList.remove('active');
-        dom.appContainer.style.display = 'flex';
+        
+        // Hide the modal using Bootstrap's API
+        if (sketchModalInstance) {
+            sketchModalInstance.hide();
+        }
+
+        // Show the main app container
+        dom.appContainer.style.display = ''; // Use default display
+        dom.appContainer.classList.remove('d-none');
+        
         App.logOutput(`Sketch loaded successfully.`);
     }
 
@@ -46,15 +55,26 @@
         dom.existingSketchList.innerHTML = '';
         if (data.sketchbooks && data.sketchbooks[0] && data.sketchbooks[0].sketches) {
             data.sketchbooks[0].sketches.forEach(sketch => {
-                const card = App.createCard(sketch.name, `Path: ${sketch.path}`, () => loadSketch(sketch));
-                dom.existingSketchList.appendChild(card);
+                // Create a Bootstrap card in a column
+                const col = document.createElement('div');
+                col.className = 'col';
+                const card = App.createCard(sketch.name, null, () => loadSketch(sketch)); // No path needed for display
+                col.appendChild(card);
+                dom.existingSketchList.appendChild(col);
             });
         }
     }
 
     App.Sketch.init = () => {
+        // Create a Bootstrap Modal instance
+        sketchModalInstance = new bootstrap.Modal(dom.sketchModalEl);
+
         dom.createSketchBtn.addEventListener('click', createNewSketch);
+
+        // Show the modal on initialization
+        sketchModalInstance.show();
     };
 
+    // Expose for main.js to call
     App.Sketch.populateSketches = populateSketches;
 })();

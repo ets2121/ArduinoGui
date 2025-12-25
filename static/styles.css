@@ -1,0 +1,92 @@
+/* ======================================================================
+   BOOTSTRAP THEME CUSTOMIZATION (DARK MODE)
+   ====================================================================== */
+:root {
+    --primary-color: #4CAF50;
+    --background-color: #212529; /* Bootstrap's default dark bg */
+    --component-bg: #343a40;
+    --border-color: #495057;
+    --text-color: #f8f9fa;
+    --text-muted: #adb5bd;
+
+    /* Override Bootstrap CSS Variables */
+    --bs-primary: var(--primary-color);
+    --bs-primary-rgb: 76, 175, 80;
+    --bs-body-bg: var(--background-color);
+    --bs-body-color: var(--text-color);
+    --bs-tertiary-bg: var(--component-bg);
+    --bs-border-color: var(--border-color);
+    --bs-link-color: var(--primary-color);
+    --bs-link-hover-color: #66bb6a;
+}
+
+/* ======================================================================
+   LAYOUT & COMPONENT STYLING
+   ====================================================================== */
+
+/* Ensure the app container takes up the full viewport height */
+.vh-100 {
+    height: 100vh;
+}
+
+/* Ensure the main content area and editor can grow to fill space */
+#main-content {
+    max-height: 100%; /* Needed for children with overflow */
+}
+
+#page-container {
+    min-height: 0; /* Fix for flexbox overflow bug */
+}
+
+.page {
+    display: none; /* Hide pages by default */
+}
+
+.page.active {
+    display: flex; /* Show active page as a flex container */
+    flex-direction: column;
+}
+
+/* Style for clickable cards (used for sketch & library lists) */
+.card.clickable {
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card.clickable:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* ======================================================================
+   CODEMIRROR EDITOR SIZING
+   ====================================================================== */
+
+/* The parent of the CodeMirror instance must have position: relative */
+#code-editor + .CodeMirror {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 100%;
+    width: 100%;
+    font-family: 'monospace';
+    font-size: 1rem;
+}
+
+/* Make file tabs look like editor tabs */
+#file-tabs .nav-link {
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem 0.25rem 0 0;
+    background-color: var(--component-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    margin-right: 2px;
+}
+
+#file-tabs .nav-link.active {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    border-bottom-color: var(--background-color);
+}

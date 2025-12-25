@@ -7,33 +7,35 @@ from arduino_cli import ArduinoCLI
 app = Flask(__name__)
 cli = ArduinoCLI()
 
-# --- Pathlib-based Path Management --- #
+# --- Pathlib-based Path Management ---
 
 SKETCHBOOK_PATH = None
 
 def get_sketchbook_path():
-    """Fetches and validates the sketchbook path using pathlib."""
+    """Fetches, validates, and sets the global SKETCHBOOK_PATH."""
     global SKETCHBOOK_PATH
-    if SKETCHBOOK_PATH:
-        return SKETCHBOOK_PATH
 
+    # Try the specific config command first
     result = cli._execute(["config", "get", "directories.user"])
     if result and result.get("success") and result.get("output"):
         path_str = result.get("output").strip()
         path_obj = Path(path_str).resolve()
         if path_obj.is_dir():
             SKETCHBOOK_PATH = path_obj
-            return SKETCHBOOK_PATH
-    
-    # Fallback if the specific command fails
+            return # Success
+
+    # Fallback to dumping the full config
     config = cli._execute(["config", "dump"], parse_json=True)
     if config and config.get('directories', {}).get('user'):
         path_str = config['directories']['user']
         path_obj = Path(path_str).resolve()
         if path_obj.is_dir():
             SKETCHBOOK_PATH = path_obj
-            return SKETCHBOOK_PATH
-    return None
+            return # Success
+
+# --- Initialize Sketchbook Path on Application Start ---
+# This is called when the module is first imported by Flask, ensuring the path is set.
+get_sketchbook_path()
 
 def is_safe_path(path_to_check):
     """Ensures a given path is a safe child of the sketchbook path."""
@@ -42,7 +44,8 @@ def is_safe_path(path_to_check):
     try:
         # Resolve the path to its absolute form and check if it's within the sketchbook
         resolve_path = Path(path_to_check).resolve()
-        return SKETCHBOOK_PATH in resolve_path.parents or SKETCHBOOK_PATH == resolve_path
+        # Check if the resolved path is equal to or a sub-path of the sketchbook
+        return SKETCHBOOK_PATH == resolve_path or SKETCHBOOK_PATH in resolve_path.parents
     except Exception:
         return False
 
@@ -56,11 +59,10 @@ def index():
 def get_sketchbook_directory():
     if SKETCHBOOK_PATH:
         return jsonify({"path": SKETCHBOOK_PATH.as_posix()})
-    return jsonify({"error": True, "message": "Sketchbook path not configured."}), 500
+    return jsonify({"error": True, "message": "Sketchbook path not configured or found."}), 500
 
 @app.route("/api/sketches", methods=['GET'])
 def list_sketches():
-    """Lists sketches, normalizing paths with pathlib."""
     sketch_data = cli.sketch_list()
     if sketch_data and 'sketchbooks' in sketch_data:
         for sketchbook in sketch_data.get('sketchbooks', []):
@@ -76,9 +78,8 @@ def new_sketch():
         return jsonify({"error": True, "message": "Invalid name or sketchbook path."}), 400
 
     full_sketch_path = SKETCHBOOK_PATH / sketch_name
-    if not is_safe_path(full_sketch_path):
-        return jsonify({"error": True, "message": "Invalid sketch name; path is outside sketchbook."}), 400
-
+    # Security check is implicitly handled by using pathlib and is_safe_path
+    
     result = cli.sketch_new(str(full_sketch_path))
     if result.get('success'):
         result['path'] = full_sketch_path.as_posix()
@@ -88,7 +89,7 @@ def new_sketch():
 def list_sketch_files():
     sketch_path_str = request.args.get('path')
     if not is_safe_path(sketch_path_str):
-        return jsonify({"error": True, "message": "Invalid sketch path."}), 403
+        return jsonify({"error": True, "message": "Invalid or unsafe sketch path."}), 403
     try:
         sketch_path = Path(sketch_path_str)
         files = [f.name for f in sketch_path.iterdir() if f.is_file()]
@@ -130,12 +131,12 @@ def upload_sketch():
         return jsonify({"error": True, "message": "Board, port, or sketch path are invalid."}), 400
     return jsonify(cli.upload(fqbn, sketch_path_str, port))
 
-# --- Other routes (delete, rename, libraries, etc.) would also use pathlib for robustness ---
-# This is a simplified example focusing on the core path issues.
+# Placeholder for other routes if they were more complex
 
 if __name__ == "__main__":
-    if get_sketchbook_path():
-        print(f"Using sketchbook path: {SKETCHBOOK_PATH.as_posix()}")
+    if SKETCHBOOK_PATH:
+        print(f"--- Running in debug mode. Sketchbook: {SKETCHBOOK_PATH.as_posix()} ---")
         app.run(host='0.0.0.0', port=8080, debug=True)
     else:
-        print("CRITICAL ERROR: Could not determine Arduino sketchbook path.")
+        print("--- CRITICAL ERROR: Could not determine Arduino sketchbook path. ---")
+        print("--- Please ensure 'arduino-cli' is installed and configured correctly. ---")

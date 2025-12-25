@@ -15,12 +15,14 @@
         App.logOutput(`Searching for "${query}"...`, 'Library');
         const data = await App.api.get(`/api/libraries/search?query=${encodeURIComponent(query)}`);
         dom.librarySearchResults.innerHTML = '';
+
         if (data.libraries) {
             data.libraries.forEach(lib => {
+                // Correctly access the properties based on the user-provided JSON structure
                 const card = App.createCard(
-                    lib.library.name, 
-                    lib.library.sentence, 
-                    () => installLibrary(lib.library.name)
+                    lib.name, 
+                    lib.latest.sentence, 
+                    () => installLibrary(lib.name)
                 );
                 dom.librarySearchResults.appendChild(card);
             });
@@ -39,6 +41,7 @@
     async function getInstalledLibraries() {
         const data = await App.api.get('/api/libraries/installed');
         dom.installedLibrariesList.innerHTML = '';
+        // This assumes a different structure for installed libraries, which is common.
         if (data.installed_libraries) {
             data.installed_libraries.forEach(lib => {
                 const l = lib.library;

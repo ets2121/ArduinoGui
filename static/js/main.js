@@ -1,27 +1,42 @@
+// ======================================================================
+// --- GLOBAL APP OBJECT & STATE ---
+// This is created IMMEDIATELY when the script is loaded.
+// It provides the namespace that other scripts will attach to.
+// ======================================================================
+window.App = {
+    state: {
+        sketchbookPath: null,
+        currentSketch: null, 
+        openFiles: {}, 
+        activeFile: null, 
+        selectedFqbn: null,
+    },
+    // API methods don't depend on the DOM, so they can be here.
+    api: {
+        get: (endpoint) => fetch(endpoint).then(res => res.json()),
+        post: (endpoint, body) => fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(res => res.json()),
+        put: (endpoint, body) => fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(res => res.json()),
+        delete: (endpoint, body) => fetch(endpoint, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(res => res.json()),
+    },
+    // Namespaces for other modules to attach their functions to
+    Sketch: {},
+    Editor: {},
+    Actions: {},
+    Libraries: {},
+    Boards: {},
+};
+
+// ======================================================================
+// --- APPLICATION INITIALIZATION ---
+// This runs AFTER the document is fully parsed and ready.
+// ======================================================================
 document.addEventListener('DOMContentLoaded', () => {
-    // ======================================================================
-    // --- GLOBAL APP OBJECT & STATE ---
-    // ======================================================================
-    window.App = {
-        state: {
-            sketchbookPath: null,
-            currentSketch: null, 
-            openFiles: {}, 
-            activeFile: null, 
-            selectedFqbn: null,
-        },
-        // Namespaces for other modules to attach to
-        Sketch: {},
-        Editor: {},
-        Actions: {},
-        Libraries: {},
-        Boards: {},
-    };
+    // Create a local reference to the global App object
+    const App = window.App;
 
     // ======================================================================
     // --- DOM ELEMENT REFERENCES ---
     // ======================================================================
-    // We will pass these to the modules that need them
     const dom = {
         outputArea: document.getElementById('console-output'),
         navButtons: document.querySelectorAll('.nav-button'),
@@ -29,15 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // ======================================================================
-    // --- SHARED UTILITIES ---
+    // --- SHARED UTILITIES (that need the DOM) ---
     // ======================================================================
-    App.api = {
-        get: (endpoint) => fetch(endpoint).then(res => res.json()),
-        post: (endpoint, body) => fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(res => res.json()),
-        put: (endpoint, body) => fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(res => res.json()),
-        delete: (endpoint, body) => fetch(endpoint, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(res => res.json()),
-    };
-
     App.logOutput = (data, prefix = '') => {
         const outputArea = dom.outputArea;
         let message = (typeof data === 'object' && data !== null) ? (data.error ? `Error: ${data.message}` : (data.output || data.message || JSON.stringify(data, null, 2))) : data;
@@ -78,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
         App.logOutput("Initializing application...");
         setupNavigation();
         
-        // Initialize all the modules
+        // Now we call the init functions that were attached by the other scripts
         App.Sketch.init();
         App.Editor.init();
         App.Actions.init();
@@ -98,5 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
         App.logOutput("Ready. Please select or create a sketch.");
     }
 
+    // Kick off the application
     initializeApp();
 });

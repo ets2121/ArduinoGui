@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // ======================================================================
-    // --- DOM ELEMENT REFERENCES (omitted for brevity) ---
+    // --- DOM ELEMENT REFERENCES ---
     // ======================================================================
     const appContainer = document.getElementById('app-container');
     const outputArea = document.getElementById('console-output');
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const installedCoresList = document.getElementById('installed-cores-list');
 
     // ======================================================================
-    // --- CODEMIRROR & API & UTILS (omitted for brevity) ---
+    // --- CODEMIRROR, API & UTILS ---
     // ======================================================================
     const codeEditor = CodeMirror.fromTextArea(codeEditorElement, { lineNumbers: true, mode: 'text/x-c++src', theme: 'monokai' });
     const api = {
@@ -60,20 +60,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const titleEl = document.createElement('h3');
         titleEl.textContent = title;
         card.appendChild(titleEl);
-        if (content) {
-            const contentEl = document.createElement('pre');
-            contentEl.textContent = content;
-            card.appendChild(contentEl);
-        }
-        if (onClick) {
-            card.classList.add('clickable');
-            card.addEventListener('click', onClick);
-        }
+        if (content) { const contentEl = document.createElement('pre'); contentEl.textContent = content; card.appendChild(contentEl); }
+        if (onClick) { card.classList.add('clickable'); card.addEventListener('click', onClick); }
         return card;
     };
 
     // ======================================================================
-    // --- UI RENDERING & MANAGEMENT (FINALIZED) ---
+    // --- UI RENDERING & MANAGEMENT ---
     // ======================================================================
 
     function renderFileList() {
@@ -110,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ======================================================================
-    // --- CORE LOGIC: Sketch & File Handling (FINALIZED) ---
+    // --- CORE LOGIC: Sketch & File Handling ---
     // ======================================================================
 
     async function loadSketch(sketch) {
@@ -123,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.error) { logOutput(data); return; }
 
         for (const fileName of data.files) {
-            const filePath = `${sketch.path}/${fileName}`; // Simply join; no more replacing.
+            const filePath = `${sketch.path}/${fileName}`; // Simply join; backend provides normalized path
             await openFile(filePath, false);
         }
 
@@ -149,7 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function saveCurrentFile() {
         if (!state.activeFile) return;
         const content = codeEditor.getValue();
-        // Only send API request if content has changed
         if (content === state.openFiles[state.activeFile]) return;
 
         logOutput(`Saving ${state.activeFile.split('/').pop()}...`, 'Editor');
@@ -167,21 +159,16 @@ document.addEventListener('DOMContentLoaded', () => {
         logOutput(`Creating new sketch: ${sketchName}...`);
         const result = await api.post('/api/sketches/new', { name: sketchName });
         logOutput(result);
-
-        // The backend now returns a normalized 'path' field. Use it directly.
         if (result.success && result.path) {
-            const newSketch = { name: sketchName, path: result.path };
-            await loadSketch(newSketch);
-        } else {
-            logOutput(result.message || 'Failed to create sketch.');
-        }
+            await loadSketch({ name: sketchName, path: result.path });
+        } 
         populateExistingSketches(); 
     }
 
     async function createNewFile() {
         const fileName = newFileNameInput.value;
         if (!fileName) { logOutput("Please enter a file name."); return; }
-        const filePath = `${state.currentSketch.path}/${fileName}`; // No replace needed
+        const filePath = `${state.currentSketch.path}/${fileName}`;
         const result = await api.post('/api/sketch/file', { path: filePath });
         logOutput(result);
         if (!result.error) {
@@ -189,11 +176,55 @@ document.addEventListener('DOMContentLoaded', () => {
             renderFileList();
         }
     }
-    
-    // ... (other functions like delete/rename are similar, relying on state.activeFile)
+
+    async function deleteCurrentFile() {
+        if (!state.activeFile) { logOutput('No active file selected.'); return; }
+        const fileName = state.activeFile.split('/').pop();
+        if (!confirm(`Are you sure you want to delete ${fileName}?`)) return;
+
+        const result = await api.delete('/api/sketch/file', { path: state.activeFile });
+        logOutput(result);
+
+        if (!result.error) {
+            const deletedPath = state.activeFile;
+            delete state.openFiles[deletedPath];
+            state.activeFile = null;
+            codeEditor.setValue(''); 
+
+            const remainingFiles = Object.keys(state.openFiles);
+            if (remainingFiles.length > 0) {
+                setActiveFile(remainingFiles[0]);
+            } else {
+                renderFileTabs();
+                renderFileList();
+            }
+        }
+    }
+
+    async function renameCurrentFile() {
+        if (!state.activeFile) { logOutput('No active file selected.'); return; }
+        const oldPath = state.activeFile;
+        const oldName = oldPath.split('/').pop();
+        const newName = prompt("Enter new name for the file:", oldName);
+
+        if (!newName || newName === oldName) { logOutput("Rename cancelled."); return; }
+
+        const result = await api.post('/api/sketch/file/rename', { old_path: oldPath, new_name: newName });
+        logOutput(result);
+
+        if (!result.error) {
+            const newPath = oldPath.substring(0, oldPath.lastIndexOf('/') + 1) + newName;
+            state.openFiles[newPath] = state.openFiles[oldPath];
+            delete state.openFiles[oldPath];
+            state.activeFile = newPath;
+            renderFileList();
+            renderFileTabs();
+            setActiveFile(newPath);
+        }
+    }
 
     // ======================================================================
-    // --- INITIALIZATION & MODAL (FINALIZED) ---
+    // --- INITIALIZATION & API-DEPENDENT FUNCTIONS ---
     // ======================================================================
 
     async function initializeApp() {
@@ -213,18 +244,12 @@ document.addEventListener('DOMContentLoaded', () => {
         existingSketchList.innerHTML = '';
         if (data.sketchbooks && data.sketchbooks[0] && data.sketchbooks[0].sketches) {
             data.sketchbooks[0].sketches.forEach(sketch => {
-                // Backend sends normalized paths, so we can use them directly.
                 const card = createCard(sketch.name, `Path: ${sketch.path}`, () => loadSketch(sketch));
                 existingSketchList.appendChild(card);
             });
         }
     }
     
-    // ... (rest of functions and event listeners omitted for brevity)
-    // They are unchanged from the previous correct version, but for completeness
-    // the full logic is being written to the file.
-
-    // --- Compile & Upload ---
     async function compileSketch() {
         if (!state.currentSketch || !state.selectedFqbn) { logOutput('Missing sketch or board selection.'); return; }
         await saveCurrentFile(); 
@@ -232,6 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const result = await api.post('/api/compile', { fqbn: state.selectedFqbn, sketch_path: state.currentSketch.path });
         logOutput(result);
     }
+
     async function uploadSketch() {
         if (!state.currentSketch || !state.selectedFqbn) { logOutput('Missing sketch or board selection.'); return; }
         const port = prompt("Enter serial port (e.g., COM3):", "");
@@ -241,16 +267,58 @@ document.addEventListener('DOMContentLoaded', () => {
         const result = await api.post('/api/upload', { fqbn: state.selectedFqbn, port: port, sketch_path: state.currentSketch.path });
         logOutput(result);
     }
-    // --- Boards & Libraries ---
-    async function populateBoards() { /* ... */ }
-    async function getInstalledCores() { /* ... */ }
-    async function searchLibraries() { /* ... */ }
-    async function installLibrary(name) { /* ... */ }
-    async function getInstalledLibraries() { /* ... */ }
-    async function deleteCurrentFile() { /* ... */ }
-    async function renameCurrentFile() { /* ... */ }
 
-    // Assigning all functions to their buttons
+    async function populateBoards() {
+        const data = await api.get('/api/boards');
+        boardSelector.innerHTML = '<option value="">Select Board</option>';
+        if (data && data.boards) {
+            data.boards.forEach(b => boardSelector.add(new Option(b.name, b.fqbn)));
+        }
+    }
+
+    async function getInstalledCores() {
+        const data = await api.get('/api/cores/installed');
+        installedCoresList.innerHTML = '';
+        if (data && data.platforms) {
+            data.platforms.forEach(p => {
+                installedCoresList.appendChild(createCard(p.maintainer, `ID: ${p.id}\nVersion: ${p.installed_version}`));
+            });
+        }
+    }
+
+    async function searchLibraries() {
+        const query = librarySearchInput.value; if (!query) return;
+        logOutput(`Searching for "${query}"...`, 'Library');
+        const data = await api.get(`/api/libraries/search?query=${query}`);
+        librarySearchResults.innerHTML = '';
+        if (data.libraries) {
+            data.libraries.forEach(lib => {
+                librarySearchResults.appendChild(createCard(lib.library.name, lib.library.sentence, () => installLibrary(lib.library.name)));
+            });
+        }
+    }
+    
+    async function installLibrary(name) {
+        logOutput(`Installing ${name}...`, 'Library');
+        const result = await api.post('/api/libraries/install', { name });
+        logOutput(result, 'Library');
+        getInstalledLibraries(); // Refresh the list after installing
+    }
+
+    async function getInstalledLibraries() {
+        const data = await api.get('/api/libraries/installed');
+        installedLibrariesList.innerHTML = '';
+        if (data.installed_libraries) {
+            data.installed_libraries.forEach(lib => {
+                const l = lib.library;
+                installedLibrariesList.appendChild(createCard(l.name, `Author: ${l.author}\nVersion: ${l.version}\n\n${l.paragraph}`));
+            });
+        }
+    }
+    
+    // ======================================================================
+    // --- EVENT LISTENERS ---
+    // ======================================================================
     createSketchBtn.addEventListener('click', createNewSketch);
     createFileBtn.addEventListener('click', createNewFile);
     saveFileBtn.addEventListener('click', saveCurrentFile);
@@ -260,6 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadBtn.addEventListener('click', uploadSketch);
     boardSelector.addEventListener('change', () => state.selectedFqbn = boardSelector.value);
     librarySearchBtn.addEventListener('click', searchLibraries);
+
     navButtons.forEach(button => {
         button.addEventListener('click', () => {
             const targetPageId = 'page-' + button.getAttribute('data-page');
@@ -269,6 +338,9 @@ document.addEventListener('DOMContentLoaded', () => {
             button.classList.add('active');
         });
     });
-    
+
+    // ======================================================================
+    // --- INITIALIZE ---
+    // ======================================================================
     initializeApp();
 });
